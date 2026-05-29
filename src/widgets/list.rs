@@ -1,4 +1,3 @@
-
 use crate::fetch::fetch_stats::DomainData;
 
 
@@ -12,7 +11,7 @@ fn truncate(text: &str, width: usize) -> String {
   if text.chars().count() <= width {
       text.to_string()
   } else {
-      text.chars().take(width - 3).collect::<String>() + "..."
+      text.chars().take(width.saturating_sub(3)).collect::<String>() + "..."
   }
 }
 
@@ -21,7 +20,7 @@ pub fn make_list<'a>(title: &'a str, data: &[DomainData], color: Color, width: u
       .iter()
       .map(|data| {
 
-          let name = Span::raw(format!(" {}", truncate(&data.name, width as usize / 4 - 12)));
+          let name = Span::raw(format!(" {}", truncate(&data.name, (width as usize / 4).saturating_sub(12))));
           let count = Span::styled(format!(" ({})", data.count), Style::default().fg(color).add_modifier(Modifier::BOLD));
           ListItem::new(Spans::from(vec![name, count]))
       })

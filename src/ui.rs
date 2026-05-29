@@ -1,6 +1,7 @@
 use std::io::stdout;
 use std::sync::Arc;
 use crossterm::{
+  cursor::Show,
   event::{
     DisableMouseCapture, EnableMouseCapture, Event, EventStream, KeyCode, KeyEvent, KeyModifiers,
   },
@@ -35,14 +36,13 @@ pub async fn draw_ui(
     filters: AdGuardFilteringStatus,
     shutdown_tx: watch::Sender<bool>,
 ) -> Result<(), anyhow::Error> {
-    enable_raw_mode()?;
-    let mut stdout = stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
-    let backend = CrosstermBackend::new(stdout);
+    // Guard restores the terminal on drop, even if we return early via `?`
+    let _guard = TerminalGuard::new()?;
+    let backend = CrosstermBackend::new(stdout());
     let mut terminal = Terminal::new(backend)?;
     terminal.clear()?;
 
-    // Create task to read user input, handles quit (with q/Ctrl+C) and resizing
+    // Handle quit keys (q / Ctrl+C) in a separate task, so input never blocks on data
     let shutdown_tx = Arc::new(shutdown_tx);
     let input_shutdown_tx = Arc::clone(&shutdown_tx);
     let input_task = tokio::spawn(async move {
@@ -181,15 +181,25 @@ pub async fn draw_ui(
     // Signal shutdown to the input task and fetcher
     let _ = shutdown_tx.send(true);
     let _ = input_task.await;
-
-    terminal.show_cursor()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
-    disable_raw_mode()?;
     Ok(())
+}
+
+/// Enables raw mode + alternate screen, and restores them on drop.
+struct TerminalGuard;
+
+impl TerminalGuard {
+    fn new() -> Result<Self, anyhow::Error> {
+        enable_raw_mode()?;
+        execute!(stdout(), EnterAlternateScreen, EnableMouseCapture)?;
+        Ok(Self)
+    }
+}
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        let _ = execute!(stdout(), LeaveAlternateScreen, DisableMouseCapture, Show);
+        let _ = disable_raw_mode();
+    }
 }
 
 /// Returns `true` if a key event should quit the app: `q`, `Q`, or Ctrl+C.

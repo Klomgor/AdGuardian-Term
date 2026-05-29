@@ -1,5 +1,3 @@
-// filters.rs
-
 use tui::{
   text::{Span, Spans},
   widgets::{Block, Borders, List, ListItem},
@@ -12,7 +10,7 @@ fn truncate(text: &str, width: usize) -> String {
   if text.chars().count() <= width {
       text.to_string()
   } else {
-      text.chars().take(width - 3).collect::<String>() + "..."
+      text.chars().take(width.saturating_sub(3)).collect::<String>() + "..."
   }
 }
 
@@ -27,7 +25,7 @@ pub fn make_filters_list(filters: &[Filter], width: u16) -> List {
         };
         let status = Span::styled(status_text, Style::default().fg(color));
         let rule_count = Span::styled(format!(" ({})", filter.rules_count), Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD));
-        let name = Span::raw(format!(" {}", truncate(&filter.name, width as usize / 4 - 12)));
+        let name = Span::raw(format!(" {}", truncate(&filter.name, (width as usize / 4).saturating_sub(12))));
         let content = Spans::from(vec![status, name, rule_count]);
         ListItem::new(content)
     })
