@@ -113,7 +113,7 @@ fn convert_to_chart_data(data: Vec<f64>) -> Vec<(f64, f64)> {
 }
 
 // Interpolates data, adding n number of points, to make the chart look smoother
-fn interpolate(input: &Vec<f64>, points_between: usize) -> Vec<f64> {
+fn interpolate(input: &[f64], points_between: usize) -> Vec<f64> {
   let mut output = Vec::new();
 
   for window in input.windows(2) {

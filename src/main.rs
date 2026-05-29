@@ -96,7 +96,7 @@ fn main() {
       .await
       .map_err(|e| {
         eprintln!("Failed to initialize: {}", e);
-        std::io::Error::new(std::io::ErrorKind::Other, "Failed to initialize")
+        std::io::Error::other("Failed to initialize")
       })
       .unwrap();
 
@@ -104,7 +104,7 @@ fn main() {
       .await
       .map_err(|e| {
         eprintln!("Failed to run: {}", e);
-        std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to run: {}", e))
+        std::io::Error::other(format!("Failed to run: {}", e))
       })
       .unwrap_or_else(|e| {
         eprintln!("Error: {}", e);

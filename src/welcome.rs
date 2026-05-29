@@ -45,7 +45,7 @@ fn print_ascii_art() {
 fn print_error(message: &str, sub_message: &str, error: Option<&Error>) {
   eprintln!(
     "{}{}{}",
-    format!("{}", message).red(),
+    message.red(),
     match error {
       Some(err) => format!("\n{}", err).red().dimmed(),
       None => "".red().dimmed(),
@@ -58,7 +58,7 @@ fn print_error(message: &str, sub_message: &str, error: Option<&Error>) {
 
 /// Given a key, get the value from the environmental variables, and print it to the console
 fn get_env(key: &str) -> Result<String, env::VarError> {
-  env::var(key).map(|v| {
+  env::var(key).inspect(|v| {
     println!(
       "{}",
       format!(
@@ -67,12 +67,11 @@ fn get_env(key: &str) -> Result<String, env::VarError> {
         if key.contains("PASSWORD") {
           "******"
         } else {
-          &v
+          v
         }
       )
       .green()
     );
-    v
   })
 }
 
@@ -90,8 +89,7 @@ fn check_version(version: Option<&str>) {
           "AdGuard Home version is too old, and is now unsupported",
           format!(
             "You're running AdGuard {}. Please upgrade to v{} or later.",
-            version_str,
-            min_version.to_string()
+            version_str, min_version
           )
           .as_str(),
           None,
@@ -107,7 +105,7 @@ fn check_version(version: Option<&str>) {
             "This usually means you're running an old, and unsupported version.\n",
             "Please upgrade to v{} or later."
           ),
-          min_version.to_string()
+          min_version
         )
         .as_str(),
         None,
