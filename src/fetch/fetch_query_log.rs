@@ -1,31 +1,29 @@
-use reqwest::{
-  header::{HeaderValue, CONTENT_LENGTH, AUTHORIZATION},
-};
+use reqwest::header::{HeaderValue, AUTHORIZATION, CONTENT_LENGTH};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
 pub struct QueryResponse {
-    pub data: Vec<Query>,
+  pub data: Vec<Query>,
 }
 
 #[derive(Deserialize)]
 pub struct Query {
-    pub cached: bool,
-    pub client: String,
-    pub upstream: String,
-    #[serde(rename = "elapsedMs")]
-    pub elapsed_ms: String,
-    pub question: Question,
-    pub reason: String,
-    pub time: String,
+  pub cached: bool,
+  pub client: String,
+  pub upstream: String,
+  #[serde(rename = "elapsedMs")]
+  pub elapsed_ms: String,
+  pub question: Question,
+  pub reason: String,
+  pub time: String,
 }
 
 #[derive(Deserialize)]
 pub struct Question {
-    pub class: String,
-    pub name: String,
-    #[serde(rename = "type")]
-    pub question_type: String,
+  pub class: String,
+  pub name: String,
+  #[serde(rename = "type")]
+  pub question_type: String,
 }
 
 pub async fn fetch_adguard_query_log(
@@ -44,10 +42,12 @@ pub async fn fetch_adguard_query_log(
   let url = format!("{}/control/querylog?limit={}", endpoint, limit);
   let response = client.get(&url).headers(headers).send().await?;
   if !response.status().is_success() {
-      return Err(anyhow::anyhow!("Request failed with status code {}", response.status()));
+    return Err(anyhow::anyhow!(
+      "Request failed with status code {}",
+      response.status()
+    ));
   }
 
   let data = response.json().await?;
   Ok(data)
 }
-
