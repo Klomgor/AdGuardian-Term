@@ -33,6 +33,7 @@ pub async fn fetch_adguard_query_log(
   endpoint: &str,
   username: &str,
   password: &str,
+  limit: u32,
 ) -> Result<QueryResponse, anyhow::Error> {
   let auth_string = format!("{}:{}", username, password);
   let auth_header_value = format!("Basic {}", base64::encode(&auth_string));
@@ -40,7 +41,7 @@ pub async fn fetch_adguard_query_log(
   headers.insert(AUTHORIZATION, auth_header_value.parse()?);
   headers.insert(CONTENT_LENGTH, HeaderValue::from_static("0"));
 
-  let url = format!("{}/control/querylog", endpoint);
+  let url = format!("{}/control/querylog?limit={}", endpoint, limit);
   let response = client.get(&url).headers(headers).send().await?;
   if !response.status().is_success() {
       return Err(anyhow::anyhow!("Request failed with status code {}", response.status()));

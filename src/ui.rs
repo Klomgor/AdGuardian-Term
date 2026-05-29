@@ -1,13 +1,14 @@
-use std::{
-  io::stdout,
-  sync::Arc,
-  time::Duration,
-};
+use std::io::stdout;
+use std::sync::Arc;
 use crossterm::{
-  event::{poll, read, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyModifiers},
+  event::{
+    DisableMouseCapture, EnableMouseCapture, Event, EventStream, KeyCode, KeyEvent, KeyModifiers,
+  },
   execute,
   terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use futures::StreamExt;
+use tokio::sync::watch;
 use tui::{
   backend::CrosstermBackend,
   layout::{Constraint, Direction, Layout},
@@ -32,7 +33,7 @@ pub async fn draw_ui(
     mut stats_rx: tokio::sync::mpsc::Receiver<StatsResponse>,
     mut status_rx: tokio::sync::mpsc::Receiver<StatusResponse>,
     filters: AdGuardFilteringStatus,
-    shutdown: Arc<tokio::sync::Notify>
+    shutdown_tx: watch::Sender<bool>,
 ) -> Result<(), anyhow::Error> {
     enable_raw_mode()?;
     let mut stdout = stdout();
@@ -41,11 +42,41 @@ pub async fn draw_ui(
     let mut terminal = Terminal::new(backend)?;
     terminal.clear()?;
 
+    // Create task to read user input, handles quit (with q/Ctrl+C) and resizing
+    let shutdown_tx = Arc::new(shutdown_tx);
+    let input_shutdown_tx = Arc::clone(&shutdown_tx);
+    let input_task = tokio::spawn(async move {
+        let mut reader = EventStream::new();
+        let mut shutdown_rx = input_shutdown_tx.subscribe();
+        loop {
+            tokio::select! {
+                maybe_event = reader.next() => {
+                    match maybe_event {
+                        Some(Ok(Event::Key(key))) if is_quit_key(key) => {
+                            let _ = input_shutdown_tx.send(true);
+                            break;
+                        }
+                        Some(Ok(_)) => {}
+                        Some(Err(_)) | None => break,
+                    }
+                }
+                // Stop if shutdown was triggered elsewhere (e.g. channels closed)
+                _ = shutdown_rx.changed() => break,
+            }
+        }
+    });
+
+    let mut shutdown_rx = shutdown_tx.subscribe();
+
     loop {
-        // Receive query log and stats data from the fetcher
-        let data = match data_rx.recv().await {
-            Some(data) => data,
-            None => break, // Channel has been closed, so we break the loop
+        // Wait for the next batch of data, but bail out immediately on shutdown
+        let data = tokio::select! {
+            biased;
+            _ = shutdown_rx.changed() => break,
+            maybe_data = data_rx.recv() => match maybe_data {
+                Some(data) => data,
+                None => break,
+            },
         };
         let mut stats = match stats_rx.recv().await {
             Some(stats) => stats,
@@ -100,8 +131,8 @@ pub async fn draw_ui(
             .direction(Direction::Horizontal)
             .constraints(
                 [
-                    Constraint::Percentage(30), 
-                    Constraint::Percentage(70), 
+                    Constraint::Percentage(30),
+                    Constraint::Percentage(70),
                 ]
                 .as_ref(),
             )
@@ -123,10 +154,10 @@ pub async fn draw_ui(
                 .direction(Direction::Horizontal)
                 .constraints(
                     [
-                        Constraint::Percentage(25), 
-                        Constraint::Percentage(25), 
-                        Constraint::Percentage(25), 
-                        Constraint::Percentage(25), 
+                        Constraint::Percentage(25),
+                        Constraint::Percentage(25),
+                        Constraint::Percentage(25),
+                        Constraint::Percentage(25),
                     ]
                     .as_ref(),
                 )
@@ -145,37 +176,11 @@ pub async fn draw_ui(
             }
         })?;
 
-        // Check for user input events
-        if poll(Duration::from_millis(100))? {
-            match read()? {
-                Event::Key(KeyEvent {
-                    code: KeyCode::Char('q'),
-                    ..
-                }) => {
-                    // std::process::exit(0);
-                    shutdown.notify_waiters();
-                    break;
-                }
-                Event::Key(KeyEvent {
-                    code: KeyCode::Char('Q'),
-                    ..
-                }) => {
-                    shutdown.notify_waiters();
-                    break;
-                }
-                Event::Key(KeyEvent {
-                    code: KeyCode::Char('c'),
-                    modifiers: KeyModifiers::CONTROL,
-                }) => {
-                    shutdown.notify_waiters();
-                    break;
-                }
-                Event::Resize(_, _) => {}, // Handle resize event, loop will redraw the UI
-                _ => {}
-            }
-        }
-
     }
+
+    // Signal shutdown to the input task and fetcher
+    let _ = shutdown_tx.send(true);
+    let _ = input_task.await;
 
     terminal.show_cursor()?;
     execute!(
@@ -185,5 +190,14 @@ pub async fn draw_ui(
     )?;
     disable_raw_mode()?;
     Ok(())
+}
+
+/// Returns `true` if a key event should quit the app: `q`, `Q`, or Ctrl+C.
+fn is_quit_key(key: KeyEvent) -> bool {
+    match key.code {
+        KeyCode::Char('q') | KeyCode::Char('Q') => true,
+        KeyCode::Char('c') => key.modifiers.contains(KeyModifiers::CONTROL),
+        _ => false,
+    }
 }
 
