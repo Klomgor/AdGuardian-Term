@@ -14,7 +14,7 @@ fn truncate(text: &str, width: usize) -> String {
   }
 }
 
-pub fn make_filters_list(filters: &[Filter], width: u16) -> List {
+pub fn make_filters_list(filters: &[Filter], width: u16) -> List<'_> {
   let items: Vec<ListItem> = filters
     .iter()
     .map(|filter| {

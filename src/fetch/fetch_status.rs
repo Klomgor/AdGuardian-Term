@@ -24,22 +24,16 @@ use serde::Deserialize;
 /// # Fields
 ///
 /// * `version` - The version of the AdGuard Home instance.
-/// * `language` - The language currently used in the AdGuard Home instance.
-/// * `dns_addresses` - The DNS addresses used by the AdGuard Home instance.
 /// * `dns_port` - The port number on which the DNS server is running.
 /// * `http_port` - The port number on which the HTTP server is running.
-/// * `protection_disabled_duration` - The duration for which protection is disabled (in seconds).
 /// * `protection_enabled` - Whether or not protection is currently enabled.
 /// * `dhcp_available` - Whether or not DHCP is available.
 /// * `running` - Whether or not the AdGuard Home instance is currently running.
 #[derive(Debug, Deserialize, Clone)]
 pub struct StatusResponse {
     pub version: String,
-    pub language: String,
-    pub dns_addresses: Vec<String>,
     pub dns_port: u16,
     pub http_port: u16,
-    pub protection_disabled_duration: u64,
     pub protection_enabled: bool,
     pub dhcp_available: bool,
     pub running: bool,

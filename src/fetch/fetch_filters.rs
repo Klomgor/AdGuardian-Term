@@ -8,7 +8,6 @@ pub struct AdGuardFilteringStatus {
 
 #[derive(Deserialize)]
 pub struct Filter {
-    pub url: String,
     pub name: String,
     pub rules_count: u32,
     pub enabled: bool,

@@ -6,7 +6,7 @@ use tui::{
 
 use crate::fetch::fetch_stats::StatsResponse;
 
-pub fn make_gauge(stats: &StatsResponse) -> Gauge {
+pub fn make_gauge(stats: &StatsResponse) -> Gauge<'_> {
 
   let total_blocked = stats.num_blocked_filtering
     + stats.num_replaced_parental
