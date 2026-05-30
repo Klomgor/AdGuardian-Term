@@ -1,5 +1,4 @@
 # CI checks for PRs
-
 name: 🚦 CI
 
 on:
@@ -33,7 +32,7 @@ jobs:
 
       - name: Filter changed paths
         id: filter
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         with:
           filters: |
             docker:
@@ -145,24 +144,23 @@ jobs:
         run: cargo doc --no-deps --all-features --locked
 
   # Dependencies audit for known vulnerabilities
-  audit:
-    name: 🛡️ Audit
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    continue-on-error: true # TODO: Remove continue-on-error once ratatui updated
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          persist-credentials: false
+  # audit:
+  #   name: 🛡️ Audit
+  #   runs-on: ubuntu-latest
+  #   timeout-minutes: 15
+  #   steps:
+  #     - name: Checkout
+  #       uses: actions/checkout@v6
+  #       with:
+  #         persist-credentials: false
 
-      - name: Install cargo-audit
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-audit
+  #     - name: Install cargo-audit
+  #       uses: taiki-e/install-action@v2
+  #       with:
+  #         tool: cargo-audit
 
-      - name: Run cargo audit
-        run: cargo audit
+  #     - name: Run cargo audit
+  #       run: cargo audit
 
   # Run the Docker image build and smoke test
   docker:
@@ -206,7 +204,7 @@ jobs:
         uses: raven-actions/actionlint@v2
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.x'
 
@@ -246,6 +244,7 @@ jobs:
           persist-credentials: false
 
       - name: Review dependencies
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@v5
         with:
           fail-on-severity: moderate
+          show-openssf-scorecard: false

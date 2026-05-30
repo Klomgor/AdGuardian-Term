@@ -1,13 +1,10 @@
 # Builds AdGuardian for all supported targets and drafts a GitHub release
-# with the compiled binaries, a SHA256SUMS checksum file, and SLSA
-# build-provenance attestations.
+# with the compiled binaries, a SHA256 checksum and provenance attestations
+# The release is created as a draft, then human can review and hit publish
 #
 # Triggered by:
 # - Push of any minor/major (X.Y.0) git tag (patch tags just rebuild Docker)
 # - Manual dispatch with any existing tag (any version)
-#
-# The release is created as a DRAFT — review the auto-generated notes and
-# assets, then publish manually. Publishing fires the crates.io workflow.
 
 name: 🚀 Release
 
@@ -59,8 +56,6 @@ jobs:
             target: aarch64-apple-darwin
             cross: false
           - name: adguardian-macos-x86_64
-            # Cross-compiled from the arm64 runner — Apple's toolchain targets
-            # x86_64 natively, so no dedicated (now-retired) Intel runner needed
             os: macos-latest
             target: x86_64-apple-darwin
             cross: false
@@ -79,9 +74,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-
-      # No build cache here — release artifacts are built clean from the tag,
-      # so a poisoned cache can never taint a published binary.
 
       - name: 📦 Install apt dependencies
         if: matrix.apt != ''
@@ -110,7 +102,7 @@ jobs:
           cp "$SRC" "${{ matrix.name }}"
 
       - name: ⬆️ Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.name }}
           path: ${{ matrix.name }}
@@ -137,7 +129,7 @@ jobs:
           persist-credentials: false
 
       - name: 📥 Download all binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true
@@ -168,9 +160,7 @@ jobs:
 
       - name: 📝 Create draft release
         id: release
-        # Kept over `gh release create` for built-in generate_release_notes,
-        # previous_tag selection, fail_on_unmatched_files, and multi-file upload.
-        uses: softprops/action-gh-release@v2 # zizmor: ignore[superfluous-actions]
+        uses: softprops/action-gh-release@v3 # zizmor: ignore[superfluous-actions]
         with:
           tag_name: ${{ env.TAG }}
           name: Release ${{ env.TAG }}
