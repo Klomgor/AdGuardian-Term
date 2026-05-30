@@ -1,3 +1,11 @@
+# Builds the multi-arch image and publishes to GHCR (+ DockerHub if configured).
+#
+# Triggered by git tag creation, which publishes to the same docker tag.
+# Each platform is built on its own runner in parallel and pushed by digest;
+# a final merge job stitches the digests into one manifest list per registry,
+# then attaches provenance + SBOM attestations. arm64 builds natively on an
+# arm runner; the 32-bit glibc variants (arm/v7, 386) are emulated via QEMU.
+
 name: 🐳 Docker
 
 on:
@@ -13,15 +21,12 @@ on:
     tags:
       - '*'
 
-permissions:
-  contents: read
-  packages: write
-  id-token: write
-  attestations: write
-
 concurrency:
   group: docker-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 env:
   IMAGE_NAME: adguardian
@@ -30,155 +35,242 @@ env:
   DOCKERHUB_REGISTRY: docker.io
 
 jobs:
-  docker:
+  # Resolve the tag + target registries once, shared by every build leg + merge
+  prepare:
+    name: 🧭 Prepare
     runs-on: ubuntu-latest
-
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      ghcr_image: ${{ steps.meta.outputs.ghcr_image }}
+      publish_images: ${{ steps.meta.outputs.publish_images }}
+      dockerhub_enabled: ${{ steps.meta.outputs.dockerhub_enabled }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-
       - name: Compute image metadata
         id: meta
         shell: bash
         env:
+          EVENT_NAME: ${{ github.event_name }}
           MANUAL_TAG: ${{ inputs.tag }}
           DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUB_PASSWORD }}
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            if [[ -n "${MANUAL_TAG}" ]]; then
-              TAG="${MANUAL_TAG}"
-            else
-              TAG="latest"
-            fi
-          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            if [[ -n "$MANUAL_TAG" ]]; then TAG="$MANUAL_TAG"; else TAG="latest"; fi
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
           else
             TAG="latest"
           fi
 
-          TAG="$(echo "${TAG}" | sed -E 's/[^A-Za-z0-9_.-]+/-/g; s/^[.-]+//' | cut -c1-128)"
-          if [[ -z "${TAG}" ]]; then
-            echo "Computed Docker tag is empty" >&2
+          TAG="$(echo "$TAG" | sed -E 's/[^A-Za-z0-9_.-]+/-/g; s/^[.-]+//' | cut -c1-128)"
+          if [[ -z "$TAG" ]]; then
+            echo "::error::Computed Docker tag is empty"
             exit 1
           fi
 
           GHCR_IMAGE="${GHCR_REGISTRY}/${DOCKER_USER}/${IMAGE_NAME}"
-          PUBLISH_IMAGES="${GHCR_IMAGE}"
-          if [[ -n "${DOCKERHUB_PASSWORD}" ]]; then
-            DOCKERHUB_IMAGE="${DOCKERHUB_REGISTRY}/${DOCKER_USER}/${IMAGE_NAME}"
-            PUBLISH_IMAGES="${PUBLISH_IMAGES},${DOCKERHUB_IMAGE}"
-            echo "dockerhub_enabled=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "dockerhub_enabled=false" >> "$GITHUB_OUTPUT"
+          PUBLISH_IMAGES="$GHCR_IMAGE"
+          DOCKERHUB_ENABLED="false"
+          if [[ -n "$DOCKERHUB_PASSWORD" ]]; then
+            PUBLISH_IMAGES="${PUBLISH_IMAGES},${DOCKERHUB_REGISTRY}/${DOCKER_USER}/${IMAGE_NAME}"
+            DOCKERHUB_ENABLED="true"
           fi
 
-          echo "TAG=${TAG}" >> "$GITHUB_ENV"
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "GHCR_IMAGE=${GHCR_IMAGE}" >> "$GITHUB_ENV"
-          echo "ghcr_image=${GHCR_IMAGE}" >> "$GITHUB_OUTPUT"
-          echo "PUBLISH_IMAGES=${PUBLISH_IMAGES}" >> "$GITHUB_ENV"
-          echo "publish_images=${PUBLISH_IMAGES}" >> "$GITHUB_OUTPUT"
+          {
+            echo "tag=$TAG"
+            echo "ghcr_image=$GHCR_IMAGE"
+            echo "publish_images=$PUBLISH_IMAGES"
+            echo "dockerhub_enabled=$DOCKERHUB_ENABLED"
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Set up QEMU
+  # Build each platform on its own runner, in parallel, pushing by digest
+  build:
+    name: 🏗️ Build ${{ matrix.platform }}
+    needs: prepare
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 64-bit: ultra-light scratch/musl image (Dockerfile)
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            dockerfile: ./Dockerfile
+            qemu: false
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm   # native arm64 — no emulation
+            dockerfile: ./Dockerfile
+            qemu: false
+          # 32-bit: glibc/Debian image (Dockerfile.full); emulated, but parallel
+          - platform: linux/arm/v7
+            runner: ubuntu-latest
+            dockerfile: ./Dockerfile.full
+            qemu: true
+          - platform: linux/386
+            runner: ubuntu-latest
+            dockerfile: ./Dockerfile.full
+            qemu: true
+    steps:
+      - name: 🛎️ Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: 🏷️ Prepare platform name
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: echo "PLATFORM_PAIR=${PLATFORM//\//-}" >> "$GITHUB_ENV"
+
+      - name: 🧰 Set up QEMU
+        if: matrix.qemu
         uses: docker/setup-qemu-action@v4
 
-      - name: Set up Docker Buildx
+      - name: 🧱 Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Login to GitHub Container Registry
+      - name: 🔑 Login to GitHub Container Registry
         uses: docker/login-action@v4
         with:
           registry: ${{ env.GHCR_REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Login to DockerHub
-        if: steps.meta.outputs.dockerhub_enabled == 'true'
+      - name: 🔑 Login to DockerHub
+        if: needs.prepare.outputs.dockerhub_enabled == 'true'
         uses: docker/login-action@v4
         with:
           registry: ${{ env.DOCKERHUB_REGISTRY }}
           username: ${{ env.DOCKER_USER }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
-      # Build the ultra-lightweight from scratch version for 64-bit targets
-      - name: Build lightweight image (amd64, arm64)
-        id: light
+      - name: 🏗️ Build and push by digest
+        id: build
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: ./Dockerfile
-          platforms: linux/amd64,linux/arm64
+          file: ${{ matrix.dockerfile }}
+          platforms: ${{ matrix.platform }}
           provenance: false
           sbom: false
-          cache-from: type=gha,scope=light
-          cache-to: type=gha,mode=max,scope=light
-          outputs: type=image,"name=${{ steps.meta.outputs.publish_images }}",push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ env.PLATFORM_PAIR }}
+          cache-to: type=gha,mode=max,scope=${{ env.PLATFORM_PAIR }}
+          outputs: type=image,"name=${{ needs.prepare.outputs.publish_images }}",push-by-digest=true,name-canonical=true,push=true
 
-      # Build the fat (Debian glibc) image for everything else
-      - name: Build full image (armv7, 386)
-        id: full
-        uses: docker/build-push-action@v7
+      - name: 📤 Export digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/${DIGEST#sha256:}"
+
+      - name: ⬆️ Upload digest
+        uses: actions/upload-artifact@v7
         with:
-          context: .
-          file: ./Dockerfile.full
-          platforms: linux/arm/v7,linux/386
-          provenance: false
-          sbom: false
-          cache-from: type=gha,scope=full
-          cache-to: type=gha,mode=max,scope=full
-          outputs: type=image,"name=${{ steps.meta.outputs.publish_images }}",push-by-digest=true,name-canonical=true,push=true
+          name: digests-${{ env.PLATFORM_PAIR }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
 
-      # Merge the variants into single manifest
-      - name: Create combined manifest list
-        id: manifest
+  # Combine the per-platform digests into one multi-arch manifest per registry
+  merge:
+    name: 🧩 Merge manifest
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: 📥 Download digests
+        uses: actions/download-artifact@v8
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: 🧱 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: 🔑 Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.GHCR_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🔑 Login to DockerHub
+        if: needs.prepare.outputs.dockerhub_enabled == 'true'
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.DOCKERHUB_REGISTRY }}
+          username: ${{ env.DOCKER_USER }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+      - name: 🧩 Create combined manifest list
         shell: bash
         env:
-          LIGHT_DIGEST: ${{ steps.light.outputs.digest }}
-          FULL_DIGEST: ${{ steps.full.outputs.digest }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          PUBLISH_IMAGES: ${{ needs.prepare.outputs.publish_images }}
         run: |
-          IFS=',' read -ra IMAGES <<< "${PUBLISH_IMAGES}"
+          set -euo pipefail
+          cd /tmp/digests
+          shopt -s nullglob
+          DIGEST_FILES=(*)
+          if [ ${#DIGEST_FILES[@]} -eq 0 ]; then
+            echo "::error::No digests found to merge"
+            exit 1
+          fi
+          IFS=',' read -ra IMAGES <<< "$PUBLISH_IMAGES"
           for IMG in "${IMAGES[@]}"; do
-            docker buildx imagetools create -t "${IMG}:${TAG}" \
-              "${IMG}@${LIGHT_DIGEST}" \
-              "${IMG}@${FULL_DIGEST}"
+            REFS=()
+            for f in "${DIGEST_FILES[@]}"; do
+              REFS+=("${IMG}@sha256:${f}")
+            done
+            docker buildx imagetools create -t "${IMG}:${TAG}" "${REFS[@]}"
           done
+
+      - name: 🔎 Inspect and capture GHCR digest
+        id: digest
+        shell: bash
+        env:
+          GHCR_IMAGE: ${{ needs.prepare.outputs.ghcr_image }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          set -euo pipefail
           GHCR_DIGEST=$(docker buildx imagetools inspect "${GHCR_IMAGE}:${TAG}" --format '{{.Manifest.Digest}}')
           echo "ghcr_digest=${GHCR_DIGEST}" >> "$GITHUB_OUTPUT"
+          docker buildx imagetools inspect "${GHCR_IMAGE}:${TAG}"
 
-      - name: Inspect published manifests
-        shell: bash
-        run: |
-          IFS=',' read -ra IMAGES <<< "${PUBLISH_IMAGES}"
-          for IMG in "${IMAGES[@]}"; do
-            echo "::group::${IMG}:${TAG}"
-            docker buildx imagetools inspect "${IMG}:${TAG}"
-            echo "::endgroup::"
-          done
-
-      - name: Attest build provenance
+      - name: 🪪 Attest build provenance
         uses: actions/attest-build-provenance@v4
         continue-on-error: true
         with:
-          subject-name: ${{ steps.meta.outputs.ghcr_image }}
-          subject-digest: ${{ steps.manifest.outputs.ghcr_digest }}
+          subject-name: ${{ needs.prepare.outputs.ghcr_image }}
+          subject-digest: ${{ steps.digest.outputs.ghcr_digest }}
           push-to-registry: true
 
-      - name: Generate SBOM
+      - name: 📋 Generate SBOM
         uses: anchore/sbom-action@v0.24.0
         continue-on-error: true
         with:
-          image: ${{ steps.meta.outputs.ghcr_image }}@${{ steps.manifest.outputs.ghcr_digest }}
+          image: ${{ needs.prepare.outputs.ghcr_image }}@${{ steps.digest.outputs.ghcr_digest }}
           format: spdx-json
           output-file: sbom.spdx.json
 
-      - name: Attest SBOM
+      - name: 🪪 Attest SBOM
         uses: actions/attest@v4
         continue-on-error: true
         with:
-          subject-name: ${{ steps.meta.outputs.ghcr_image }}
-          subject-digest: ${{ steps.manifest.outputs.ghcr_digest }}
+          subject-name: ${{ needs.prepare.outputs.ghcr_image }}
+          subject-digest: ${{ steps.digest.outputs.ghcr_digest }}
           predicate-type: https://spdx.dev/Document
           predicate-path: sbom.spdx.json
           push-to-registry: true
