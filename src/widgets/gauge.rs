@@ -12,7 +12,10 @@ pub fn make_gauge(stats: &StatsResponse) -> Gauge<'_> {
     + stats.num_replaced_safebrowsing
     + stats.num_replaced_safesearch;
 
-  let percent = (total_blocked as f64 / stats.num_dns_queries as f64 * 100.0) as u16;
+  // `max(1)` avoids a divide-by-zero, and the clamp keeps it in the 0..=100
+  // range that `Gauge::percent` requires (it panics otherwise)
+  let percent =
+    (total_blocked as f64 / stats.num_dns_queries.max(1) as f64 * 100.0).min(100.0) as u16;
 
   let label = format!(
     "Blocked {} out of {} ({}%)",

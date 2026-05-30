@@ -19,13 +19,13 @@ pub async fn fetch_adguard_filter_list(
   endpoint: &str,
   username: &str,
   password: &str,
-) -> Result<AdGuardFilteringStatus, reqwest::Error> {
+) -> Result<AdGuardFilteringStatus, anyhow::Error> {
   let url = format!("{}/control/filtering/status", endpoint);
 
   let auth_string = format!("{}:{}", username, password);
   let auth_header_value = format!("Basic {}", STANDARD.encode(&auth_string));
   let mut headers = HeaderMap::new();
-  headers.insert("Authorization", auth_header_value.parse().unwrap());
+  headers.insert("Authorization", auth_header_value.parse()?);
 
   let res: Response = client.get(&url).headers(headers).send().await?;
   let status: AdGuardFilteringStatus = res.json().await?;

@@ -5,14 +5,32 @@ mod widgets;
 
 use reqwest::Client;
 use std::{env, time::Duration};
-use tokio::time::interval;
+use tokio::time::{interval, MissedTickBehavior};
 
 use ui::draw_ui;
 
 use fetch::{
-  fetch_filters::fetch_adguard_filter_list, fetch_query_log::fetch_adguard_query_log,
-  fetch_stats::fetch_adguard_stats, fetch_status::fetch_adguard_status,
+  fetch_filters::fetch_adguard_filter_list,
+  fetch_query_log::{fetch_adguard_query_log, Query},
+  fetch_stats::{fetch_adguard_stats, StatsResponse},
+  fetch_status::{fetch_adguard_status, StatusResponse},
 };
+
+/// Fetch the query log, stats and status together, so a failure leaves the UI's
+/// data in sync (all-or-nothing) rather than partially updated.
+async fn fetch_all(
+  client: &Client,
+  hostname: &str,
+  username: &str,
+  password: &str,
+  query_log_limit: u32,
+) -> anyhow::Result<(Vec<Query>, StatsResponse, StatusResponse)> {
+  let queries =
+    fetch_adguard_query_log(client, hostname, username, password, query_log_limit).await?;
+  let stats = fetch_adguard_stats(client, hostname, username, password).await?;
+  let status = fetch_adguard_status(client, hostname, username, password).await?;
+  Ok((queries.data, stats, status))
+}
 
 async fn run() -> anyhow::Result<()> {
   // Create a reqwest client
@@ -51,6 +69,7 @@ async fn run() -> anyhow::Result<()> {
     .unwrap_or_else(|_| "2".into())
     .parse()?;
   let mut interval = interval(Duration::from_secs(interval_secs));
+  interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
   // Max num of query log entries to fetch per update
   let query_log_limit: u32 = env::var("ADGUARD_QUERYLOG_LIMIT")
@@ -61,20 +80,17 @@ async fn run() -> anyhow::Result<()> {
   loop {
     tokio::select! {
         _ = interval.tick() => {
-            // A send error means the UI has shut down, so stop fetching
-            let queries = fetch_adguard_query_log(&client, &hostname, &username, &password, query_log_limit).await?;
-            if queries_tx.send(queries.data).await.is_err() {
-                break;
-            }
-
-            let stats = fetch_adguard_stats(&client, &hostname, &username, &password).await?;
-            if stats_tx.send(stats).await.is_err() {
-                break;
-            }
-
-            let status = fetch_adguard_status(&client, &hostname, &username, &password).await?;
-            if status_tx.send(status).await.is_err() {
-                break;
+            // Check data is ok, just skip this update on transient error
+            if let Ok((queries, stats, status)) =
+                fetch_all(&client, &hostname, &username, &password, query_log_limit).await
+            {
+                // A send error means the UI has shut down, so stop fetching
+                if queries_tx.send(queries).await.is_err()
+                    || stats_tx.send(stats).await.is_err()
+                    || status_tx.send(status).await.is_err()
+                {
+                    break;
+                }
             }
         }
         // Resolves when the UI sets the shutdown flag, or drops the sender
@@ -92,13 +108,10 @@ async fn run() -> anyhow::Result<()> {
 fn main() {
   let rt = tokio::runtime::Runtime::new().unwrap();
   rt.block_on(async {
-    welcome::welcome()
-      .await
-      .map_err(|e| {
-        eprintln!("Failed to initialize: {}", e);
-        std::io::Error::other("Failed to initialize")
-      })
-      .unwrap();
+    welcome::welcome().await.unwrap_or_else(|e| {
+      eprintln!("Failed to initialize: {}", e);
+      std::process::exit(1);
+    });
 
     run()
       .await

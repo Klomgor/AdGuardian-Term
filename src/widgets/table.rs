@@ -19,7 +19,8 @@ pub fn make_query_table(data: &[Query], width: u16) -> Table<'_> {
 
       let client = Cell::from(query.client.as_str()).style(Style::default().fg(Color::Blue));
 
-      let (time_taken, elapsed_color) = make_time_taken_and_color(&query.elapsed_ms).unwrap();
+      let (time_taken, elapsed_color) = make_time_taken_and_color(&query.elapsed_ms)
+        .unwrap_or_else(|_| ("? ms".to_string(), Color::Gray));
       let elapsed_ms = Cell::from(time_taken).style(Style::default().fg(elapsed_color));
 
       let (status_txt, status_color) = block_status_text(&query.reason, query.cached);

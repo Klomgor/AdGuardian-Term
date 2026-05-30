@@ -63,7 +63,9 @@ fn make_history_datasets(stats: &StatsResponse) -> Vec<Dataset<'_>> {
 // Determine the uppermost bounds for the x and y axis
 fn find_bounds(stats: &StatsResponse) -> (f64, f64) {
   let mut max_length = 0;
-  let mut max_value = f64::MIN;
+  // Floor at 0 so empty data can't leave this at f64::MIN (which would later
+  // overflow when cast to an axis-label step)
+  let mut max_value = 0.0;
 
   for dataset in &[&stats.dns_queries_chart, &stats.blocked_filtering_chart] {
     let length = dataset.len();
@@ -114,8 +116,12 @@ fn convert_to_chart_data(data: Vec<f64>) -> Vec<(f64, f64)> {
 
 // Interpolates data, adding n number of points, to make the chart look smoother
 fn interpolate(input: &[f64], points_between: usize) -> Vec<f64> {
-  let mut output = Vec::new();
+  // Nothing to interpolate between - avoids a panic on the `last()` below
+  let Some(&last) = input.last() else {
+    return Vec::new();
+  };
 
+  let mut output = Vec::new();
   for window in input.windows(2) {
     let start = window[0];
     let end = window[1];
@@ -127,7 +133,7 @@ fn interpolate(input: &[f64], points_between: usize) -> Vec<f64> {
     }
   }
 
-  output.push(*input.last().unwrap());
+  output.push(last);
   output
 }
 
