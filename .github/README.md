@@ -283,12 +283,12 @@ Below is an outline + current status of each workflow.
 
 | Workflow                                           | Status                                                                                                                                                                |
 |----------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Build Docker image and push to registry            | [![Build Docker Image 🐳](https://github.com/Lissy93/AdGuardian-Term/actions/workflows/build-docker.yml/badge.svg)](https://github.com/Lissy93/AdGuardian-Term/actions/workflows/build-docker.yml) |
-| Compile binaries and upload artifacts to release   | [![Compile Release 🚀](https://github.com/Lissy93/AdGuardian-Term/actions/workflows/release-binaries.yml/badge.svg)](https://github.com/Lissy93/AdGuardian-Term/actions/workflows/release-binaries.yml) |
+| Bump version and push git tag on merge to main     | [![Tag 🔖](https://github.com/Lissy93/AdGuardian-Term/actions/workflows/tag.yml/badge.svg)](https://github.com/Lissy93/AdGuardian-Term/actions/workflows/tag.yml) |
+| Compile binaries and draft a release on each tag   | [![Release 🚀](https://github.com/Lissy93/AdGuardian-Term/actions/workflows/release.yml/badge.svg)](https://github.com/Lissy93/AdGuardian-Term/actions/workflows/release.yml) |
 | Publish compiled app to crates.io                  | [![Publish to Crates.io 📦](https://github.com/Lissy93/AdGuardian-Term/actions/workflows/push-cargo.yml/badge.svg)](https://github.com/Lissy93/AdGuardian-Term/actions/workflows/push-cargo.yml) |
+| Build Docker image and push to registry            | [![Docker 🐳](https://github.com/Lissy93/AdGuardian-Term/actions/workflows/docker.yml/badge.svg)](https://github.com/Lissy93/AdGuardian-Term/actions/workflows/docker.yml) |
 | Generate documentation from Rustdoc, upload to GH pages | [![Generate Rust Docs 📝](https://github.com/Lissy93/AdGuardian-Term/actions/workflows/publish-docs.yml/badge.svg)](https://github.com/Lissy93/AdGuardian-Term/actions/workflows/publish-docs.yml) |
 | Sync repo with downstream codeberg mirror          | [![Mirror to Codeberg 🪞](https://github.com/Lissy93/AdGuardian-Term/actions/workflows/mirror.yml/badge.svg)](https://github.com/Lissy93/AdGuardian-Term/actions/workflows/mirror.yml) |
-| Insert list of contributors + sponsors into readme | [![Insert Contributors 👥](https://github.com/Lissy93/AdGuardian-Term/actions/workflows/insert-contributors.yml/badge.svg)](https://github.com/Lissy93/AdGuardian-Term/actions/workflows/insert-contributors.yml) |
 
 ---
 
