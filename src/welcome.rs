@@ -1,3 +1,4 @@
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use colored::*;
 use reqwest::{Client, Error};
 use std::{
@@ -129,7 +130,7 @@ async fn verify_connection(
   );
 
   let auth_string = format!("{}:{}", username, password);
-  let auth_header_value = format!("Basic {}", base64::encode(&auth_string));
+  let auth_header_value = format!("Basic {}", STANDARD.encode(&auth_string));
   let mut headers = reqwest::header::HeaderMap::new();
   headers.insert("Authorization", auth_header_value.parse()?);
 

@@ -1,3 +1,4 @@
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 /// This module fetches data from AdGuard's stats API
 /// This includes total number of blocked / allowed queries in each category,
 /// and 30-day query count history
@@ -50,7 +51,7 @@ pub async fn fetch_adguard_stats(
   password: &str,
 ) -> Result<StatsResponse, anyhow::Error> {
   let auth_string = format!("{}:{}", username, password);
-  let auth_header_value = format!("Basic {}", base64::encode(&auth_string));
+  let auth_header_value = format!("Basic {}", STANDARD.encode(&auth_string));
   let mut headers = reqwest::header::HeaderMap::new();
   headers.insert(AUTHORIZATION, auth_header_value.parse()?);
   headers.insert(CONTENT_LENGTH, HeaderValue::from_static("0"));

@@ -1,3 +1,4 @@
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use reqwest::{header::HeaderMap, Client, Response};
 use serde::Deserialize;
 
@@ -22,7 +23,7 @@ pub async fn fetch_adguard_filter_list(
   let url = format!("{}/control/filtering/status", endpoint);
 
   let auth_string = format!("{}:{}", username, password);
-  let auth_header_value = format!("Basic {}", base64::encode(&auth_string));
+  let auth_header_value = format!("Basic {}", STANDARD.encode(&auth_string));
   let mut headers = HeaderMap::new();
   headers.insert("Authorization", auth_header_value.parse().unwrap());
 

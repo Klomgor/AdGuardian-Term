@@ -1,3 +1,4 @@
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use reqwest::header::{HeaderValue, AUTHORIZATION, CONTENT_LENGTH};
 use serde::Deserialize;
 
@@ -34,7 +35,7 @@ pub async fn fetch_adguard_query_log(
   limit: u32,
 ) -> Result<QueryResponse, anyhow::Error> {
   let auth_string = format!("{}:{}", username, password);
-  let auth_header_value = format!("Basic {}", base64::encode(&auth_string));
+  let auth_header_value = format!("Basic {}", STANDARD.encode(&auth_string));
   let mut headers = reqwest::header::HeaderMap::new();
   headers.insert(AUTHORIZATION, auth_header_value.parse()?);
   headers.insert(CONTENT_LENGTH, HeaderValue::from_static("0"));
