@@ -1,26 +1,26 @@
-
-use tui::{
-  style::{Color, Modifier, Style},
-  widgets::{Block, Borders, Cell, Row, Table},
-  text::{Span},
-  layout::{Constraint},
-};
 use chrono::{DateTime, Utc};
+use tui::{
+  layout::Constraint,
+  style::{Color, Modifier, Style},
+  text::Span,
+  widgets::{Block, Borders, Cell, Row, Table},
+};
 
 use crate::fetch::fetch_query_log::{Query, Question};
 pub fn make_query_table(data: &[Query], width: u16) -> Table<'_> {
-  let rows = data.iter().map(|query| {
-      let time = Cell::from(
-          time_ago(query.time.as_str()).unwrap_or("unknown".to_string())
-      ).style(Style::default().fg(Color::Gray));
-      
+  let rows = data
+    .iter()
+    .map(|query| {
+      let time = Cell::from(time_ago(query.time.as_str()).unwrap_or("unknown".to_string()))
+        .style(Style::default().fg(Color::Gray));
+
       let question = Cell::from(make_request_cell(&query.question).unwrap())
-          .style(Style::default().add_modifier(Modifier::BOLD));
+        .style(Style::default().add_modifier(Modifier::BOLD));
 
-      let client = Cell::from(query.client.as_str())
-          .style(Style::default().fg(Color::Blue));
+      let client = Cell::from(query.client.as_str()).style(Style::default().fg(Color::Blue));
 
-      let (time_taken, elapsed_color) = make_time_taken_and_color(&query.elapsed_ms).unwrap();
+      let (time_taken, elapsed_color) = make_time_taken_and_color(&query.elapsed_ms)
+        .unwrap_or_else(|_| ("? ms".to_string(), Color::Gray));
       let elapsed_ms = Cell::from(time_taken).style(Style::default().fg(elapsed_color));
 
       let (status_txt, status_color) = block_status_text(&query.reason, query.cached);
@@ -30,57 +30,52 @@ pub fn make_query_table(data: &[Query], width: u16) -> Table<'_> {
 
       let color = make_row_color(&query.reason);
       Row::new(vec![time, question, status, elapsed_ms, client, upstream])
-          .style(Style::default().fg(color))
-  }).collect::<Vec<Row>>();
+        .style(Style::default().fg(color))
+    })
+    .collect::<Vec<Row>>();
 
-  
-  let title = Span::styled(
-    "Query Log",
-    Style::default().add_modifier(Modifier::BOLD),
-  );
+  let title = Span::styled("Query Log", Style::default().add_modifier(Modifier::BOLD));
 
-  let block = Block::default()
-      .title(title)
-      .borders(Borders::ALL);
+  let block = Block::default().title(title).borders(Borders::ALL);
 
   let mut headers = vec![
-      Cell::from(Span::raw("Time")),
-      Cell::from(Span::raw("Request")),
-      Cell::from(Span::raw("Status")),
-      Cell::from(Span::raw("Time Taken")),
+    Cell::from(Span::raw("Time")),
+    Cell::from(Span::raw("Request")),
+    Cell::from(Span::raw("Status")),
+    Cell::from(Span::raw("Time Taken")),
   ];
 
   if width > 120 {
-      headers.extend(vec![
-          Cell::from(Span::raw("Client")),
-          Cell::from(Span::raw("Upstream DNS")),
-      ]);
-      
-      let widths = &[
-          Constraint::Percentage(15),
-          Constraint::Percentage(35),
-          Constraint::Percentage(10),
-          Constraint::Percentage(10),
-          Constraint::Percentage(15),
-          Constraint::Percentage(15),
-      ];
+    headers.extend(vec![
+      Cell::from(Span::raw("Client")),
+      Cell::from(Span::raw("Upstream DNS")),
+    ]);
 
-      Table::new(rows)
-          .header(Row::new(headers))
-          .widths(widths)
-          .block(block)
+    let widths = &[
+      Constraint::Percentage(15),
+      Constraint::Percentage(35),
+      Constraint::Percentage(10),
+      Constraint::Percentage(10),
+      Constraint::Percentage(15),
+      Constraint::Percentage(15),
+    ];
+
+    Table::new(rows)
+      .header(Row::new(headers))
+      .widths(widths)
+      .block(block)
   } else {
-      let widths = &[
-          Constraint::Percentage(20),
-          Constraint::Percentage(40),
-          Constraint::Percentage(20),
-          Constraint::Percentage(20),
-      ];
+    let widths = &[
+      Constraint::Percentage(20),
+      Constraint::Percentage(40),
+      Constraint::Percentage(20),
+      Constraint::Percentage(20),
+    ];
 
-      Table::new(rows)
-          .header(Row::new(headers))
-          .widths(widths)
-          .block(block)
+    Table::new(rows)
+      .header(Row::new(headers))
+      .widths(widths)
+      .block(block)
   }
 }
 
@@ -93,9 +88,9 @@ fn time_ago(timestamp: &str) -> Result<String, anyhow::Error> {
   let duration = now - datetime_utc;
 
   if duration.num_minutes() < 1 {
-      Ok(format!("{} sec ago", duration.num_seconds()))
+    Ok(format!("{} sec ago", duration.num_seconds()))
   } else {
-      Ok(format!("{} min ago", duration.num_minutes()))
+    Ok(format!("{} min ago", duration.num_minutes()))
   }
 }
 
@@ -110,11 +105,11 @@ fn make_time_taken_and_color(elapsed: &str) -> Result<(String, Color), anyhow::E
   let rounded_elapsed = (elapsed_f64 * 100.0).round() / 100.0;
   let time_taken = format!("{:.2} ms", rounded_elapsed);
   let color = if elapsed_f64 < 1.0 {
-      Color::Green
+    Color::Green
   } else if (1.0..=20.0).contains(&elapsed_f64) {
-      Color::Yellow
+    Color::Yellow
   } else {
-      Color::Red
+    Color::Red
   };
   Ok((time_taken, color))
 }
@@ -122,26 +117,24 @@ fn make_time_taken_and_color(elapsed: &str) -> Result<(String, Color), anyhow::E
 // Return color for a row, based on the allow/block reason
 fn make_row_color(reason: &str) -> Color {
   if reason == "NotFilteredNotFound" {
-      Color::Green
+    Color::Green
   } else if reason == "FilteredBlackList" {
-      Color::Red
+    Color::Red
   } else {
-      Color::Yellow
+    Color::Yellow
   }
 }
 
 // Return text and color for the status cell based on allow/ block reason
 fn block_status_text(reason: &str, cached: bool) -> (String, Color) {
-  let (text, color) =
-  if reason == "FilteredBlackList" {
-      ("Blacklisted".to_string(), Color::Red)
+  let (text, color) = if reason == "FilteredBlackList" {
+    ("Blacklisted".to_string(), Color::Red)
   } else if cached {
-      ("Cached".to_string(), Color::Cyan)
+    ("Cached".to_string(), Color::Cyan)
   } else if reason == "NotFilteredNotFound" {
-      ("Allowed".to_string(), Color::Green)
+    ("Allowed".to_string(), Color::Green)
   } else {
-      ("Other Block".to_string(), Color::Yellow)
+    ("Other Block".to_string(), Color::Yellow)
   };
   (text, color)
 }
-
