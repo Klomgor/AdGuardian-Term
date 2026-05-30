@@ -59,7 +59,9 @@ jobs:
             target: aarch64-apple-darwin
             cross: false
           - name: adguardian-macos-x86_64
-            os: macos-13
+            # Cross-compiled from the arm64 runner — Apple's toolchain targets
+            # x86_64 natively, so no dedicated (now-retired) Intel runner needed
+            os: macos-latest
             target: x86_64-apple-darwin
             cross: false
           - name: adguardian-windows.exe
@@ -71,16 +73,15 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
 
       - name: 🦀 Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
-      - name: 💾 Cache cargo build
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ matrix.target }}
+      # No build cache here — release artifacts are built clean from the tag,
+      # so a poisoned cache can never taint a published binary.
 
       - name: 📦 Install apt dependencies
         if: matrix.apt != ''
@@ -133,6 +134,7 @@ jobs:
         with:
           ref: refs/tags/${{ env.TAG }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: 📥 Download all binaries
         uses: actions/download-artifact@v4
@@ -168,7 +170,7 @@ jobs:
         id: release
         # Kept over `gh release create` for built-in generate_release_notes,
         # previous_tag selection, fail_on_unmatched_files, and multi-file upload.
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v2 # zizmor: ignore[superfluous-actions]
         with:
           tag_name: ${{ env.TAG }}
           name: Release ${{ env.TAG }}
@@ -199,7 +201,7 @@ jobs:
             if [ -n "$PREV_TAG" ]; then
               echo "| Notes since | [\`${PREV_TAG}\`](${REPO_URL}/releases/tag/${PREV_TAG}) |"
             fi
-            echo "| Assets | $(ls artifacts | tr '\n' ' ') |"
+            echo "| Assets | $(find artifacts -maxdepth 1 -type f -printf '%f ') |"
             if [ -n "$RELEASE_URL" ]; then
               echo "| Draft release | ✅ [Review and publish](${RELEASE_URL}) |"
             else

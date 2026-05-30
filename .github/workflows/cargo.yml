@@ -21,12 +21,14 @@ jobs:
     steps:
       - name: 🛎️ Checkout tag
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: 🦀 Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: 💾 Cache cargo build
-        uses: Swatinem/rust-cache@v2
+      # No build cache — the crate is built clean before publishing, so a
+      # poisoned cache can never end up in a published release.
 
       - name: 🔍 Verify Cargo.toml version matches tag
         if: github.ref_type == 'tag'

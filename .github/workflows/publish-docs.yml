@@ -1,3 +1,6 @@
+# Generates Rustdoc API documentation and publishes it to the docs-src branch
+# (served via GitHub Pages). Runs on pushes to main that touch the source.
+
 name: 📝 Docs
 
 on:
@@ -9,24 +12,34 @@ on:
       - src/**
       - Cargo.toml
 
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
   build:
+    name: 📝 Build & publish docs
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v2
-
-      - name: Generate docs
-        uses: actions-rs/cargo@v1
+      - name: 🛎️ Checkout repository
+        uses: actions/checkout@v6
         with:
-          command: doc
-          args: --no-deps
+          persist-credentials: false
 
-      - name: Create index.html
-        run: echo "<meta http-equiv=\"refresh\" content=\"0; url=adguardian/index.html\">" > target/doc/index.html
+      - name: 🦀 Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Publish docs
-        uses: peaceiris/actions-gh-pages@v3.9.3
+      - name: 📝 Generate docs
+        run: cargo doc --no-deps --locked
+
+      - name: 🔗 Create index.html redirect
+        run: echo '<meta http-equiv="refresh" content="0; url=adguardian/index.html">' > target/doc/index.html
+
+      - name: 🚀 Publish docs
+        uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.BOT_TOKEN || secrets.GITHUB_TOKEN }}
           publish_dir: ./target/doc

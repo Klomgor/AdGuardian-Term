@@ -36,6 +36,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Compute image metadata
         id: meta
@@ -132,12 +134,15 @@ jobs:
       - name: Create combined manifest list
         id: manifest
         shell: bash
+        env:
+          LIGHT_DIGEST: ${{ steps.light.outputs.digest }}
+          FULL_DIGEST: ${{ steps.full.outputs.digest }}
         run: |
           IFS=',' read -ra IMAGES <<< "${PUBLISH_IMAGES}"
           for IMG in "${IMAGES[@]}"; do
             docker buildx imagetools create -t "${IMG}:${TAG}" \
-              "${IMG}@${{ steps.light.outputs.digest }}" \
-              "${IMG}@${{ steps.full.outputs.digest }}"
+              "${IMG}@${LIGHT_DIGEST}" \
+              "${IMG}@${FULL_DIGEST}"
           done
           GHCR_DIGEST=$(docker buildx imagetools inspect "${GHCR_IMAGE}:${TAG}" --format '{{.Manifest.Digest}}')
           echo "ghcr_digest=${GHCR_DIGEST}" >> "$GITHUB_OUTPUT"

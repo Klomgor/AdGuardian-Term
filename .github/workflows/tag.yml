@@ -129,17 +129,56 @@ jobs:
             core.setOutput('needs_bump', needsBump.toString());
             core.setOutput('needs_tag', needsTag.toString());
 
+      - name: 🔐 Validate release token
+        if: env.IS_MANUAL == 'true' || steps.check_pr.outputs.needs_tag == 'true'
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$BOT_TOKEN" ]; then
+            echo "::error::BOT_TOKEN is required so pushed tags trigger downstream release workflows"
+            exit 1
+          fi
+
       - name: 🛎️ Checkout repository
         if: env.IS_MANUAL == 'true' || steps.check_pr.outputs.needs_tag == 'true'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6 # zizmor: ignore[artipacked]
         with:
-          token: ${{ secrets.BOT_TOKEN || secrets.GITHUB_TOKEN }}
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.ref }}
+          token: ${{ secrets.BOT_TOKEN }}
 
       - name: 👤 Configure git identity
         if: env.IS_MANUAL == 'true' || steps.check_pr.outputs.needs_tag == 'true'
         run: |
           git config user.name "Liss-Bot"
           git config user.email "liss-bot@d0h.co"
+
+      - name: 🔎 Resolve tag version
+        id: version
+        if: env.IS_MANUAL == 'true' || steps.check_pr.outputs.needs_tag == 'true'
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          NEEDS_BUMP: ${{ steps.check_pr.outputs.needs_bump }}
+        run: |
+          set -euo pipefail
+          read_version() { grep -m1 '^version' Cargo.toml | sed -E 's/.*"(.*)".*/\1/'; }
+          CUR=$(read_version)
+          if [ "$IS_MANUAL" = "true" ] && [ -n "$INPUT_VERSION" ]; then
+            VERSION="$INPUT_VERSION"
+          elif [ "$IS_MANUAL" = "true" ] || [ "$NEEDS_BUMP" = "true" ]; then
+            IFS=. read -r MA MI PA <<< "$CUR"
+            VERSION="${MA}.${MI}.$((PA + 1))"
+          else
+            VERSION="$CUR"
+          fi
+
+          git fetch --tags --force
+          if git rev-parse "refs/tags/$VERSION" >/dev/null 2>&1; then
+            echo "::error::Tag $VERSION already exists"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: 🔍 Extract referenced issues
         id: issues
@@ -171,17 +210,12 @@ jobs:
           env.IS_MANUAL == 'true'
           || steps.check_pr.outputs.needs_bump == 'true'
         env:
-          INPUT_VERSION: ${{ inputs.version }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
           read_version() { grep -m1 '^version' Cargo.toml | sed -E 's/.*"(.*)".*/\1/'; }
           CUR=$(read_version)
-          if [ "$IS_MANUAL" = "true" ] && [ -n "$INPUT_VERSION" ]; then
-            NEW="$INPUT_VERSION"
-          else
-            IFS=. read -r MA MI PA <<< "$CUR"
-            NEW="${MA}.${MI}.$((PA + 1))"
-          fi
+          NEW="$VERSION"
 
           if [ "$NEW" = "$CUR" ]; then
             echo "Cargo.toml already at $NEW, nothing to commit"
@@ -202,7 +236,7 @@ jobs:
             echo "bumped=false" >> "$GITHUB_OUTPUT"
           else
             git commit -m "Bump version to ${NEW}"
-            git push
+            git push origin HEAD:main
             echo "bumped=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -215,16 +249,10 @@ jobs:
           PR_AUTHOR: ${{ github.event.pull_request.user.login || github.actor }}
           MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
           ISSUES: ${{ steps.issues.outputs.numbers }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          VERSION=$(grep -m1 '^version' Cargo.toml | sed -E 's/.*"(.*)".*/\1/')
           git fetch --tags --force
-          if git rev-parse "refs/tags/$VERSION" >/dev/null 2>&1; then
-            echo "Tag $VERSION already exists, skipping"
-            echo "result=existed" >> "$GITHUB_OUTPUT"
-            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
 
           {
             printf 'AdGuardian v%s 🚀\n\n' "$VERSION"
@@ -256,7 +284,7 @@ jobs:
         env:
           ISSUES: ${{ steps.issues.outputs.numbers }}
         with:
-          github-token: ${{ secrets.BOT_TOKEN || secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.BOT_TOKEN }}
           script: |
             const { owner, repo } = context.repo;
             const manifest = require('fs').readFileSync('Cargo.toml', 'utf8');
