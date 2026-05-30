@@ -82,11 +82,8 @@ fn check_version(version: Option<&str>) {
 
   match version {
     Some(version_str) => {
-      let adguard_version =
-        Version::parse(version_str.strip_prefix('v').unwrap_or(version_str)).unwrap();
-
-      if adguard_version < min_version {
-        print_error(
+      match Version::parse(version_str.strip_prefix('v').unwrap_or(version_str)) {
+        Ok(adguard_version) if adguard_version < min_version => print_error(
           "AdGuard Home version is too old, and is now unsupported",
           format!(
             "You're running AdGuard {}. Please upgrade to v{} or later.",
@@ -94,7 +91,13 @@ fn check_version(version: Option<&str>) {
           )
           .as_str(),
           None,
-        );
+        ),
+        Ok(_) => {}
+        Err(_) => print_error(
+          "Unsupported AdGuard Home version",
+          "Couldn't parse the version number reported by your AdGuard Home instance.",
+          None,
+        ),
       }
     }
     None => {
@@ -224,7 +227,7 @@ async fn check_for_updates() {
       .await
       .unwrap_or_else(|_| "0.0.0".to_string()),
   )
-  .unwrap();
+  .unwrap_or_else(|_| Version::parse("0.0.0").unwrap());
 
   // Compare the current and latest versions, and print the appropriate message
   if current_version == Version::parse("0.0.0").unwrap()
