@@ -202,6 +202,10 @@ docker run \
 
 The chart is drawn with Unicode braille characters, so you'll need a braille-capable console font which might not be pre-installed on some Debian-based systems (like DietPi). Install `console-braille`, set `FONT="Lat15-Fixed16.psf.gz brl-16x8.psf"` in `/etc/default/console-setup`, then run `sudo setupcon --save`.
 
+#### Authentication fails on a GL.iNet router
+
+GL.iNet routers run AdGuard Home with `--glinet`, and since AdGuard Home v0.107.65 that mode only accepts the router's own login, not a username and password ([AdguardTeam/AdGuardHome#8446](https://github.com/AdguardTeam/AdGuardHome/issues/8446)). To use AdGuardian, [add a user](https://github.com/AdguardTeam/AdGuardHome/wiki/Configuration#password-reset) to AdGuard Home's `config.yaml`, then remove the flag with `sed -i "s/--glinet //g" /etc/init.d/adguardhome` and restart it. AdGuard Home will then ask for that login separately, instead of using your router session.
+
 ---
 
 ## Web Mode

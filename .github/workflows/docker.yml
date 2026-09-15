@@ -182,6 +182,7 @@ jobs:
   merge:
     name: 🧩 Merge manifest
     needs: [prepare, build]
+    if: ${{ !cancelled() && needs.prepare.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -249,6 +250,19 @@ jobs:
           GHCR_DIGEST=$(docker buildx imagetools inspect "${GHCR_IMAGE}:${TAG}" --format '{{.Manifest.Digest}}')
           echo "ghcr_digest=${GHCR_DIGEST}" >> "$GITHUB_OUTPUT"
           docker buildx imagetools inspect "${GHCR_IMAGE}:${TAG}"
+
+      - name: ⚠️ Warn about missing platforms
+        if: needs.build.result != 'success'
+        continue-on-error: true
+        shell: bash
+        env:
+          GHCR_IMAGE: ${{ needs.prepare.outputs.ghcr_image }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          set -euo pipefail
+          PLATFORMS=$(docker buildx imagetools inspect --raw "${GHCR_IMAGE}:${TAG}" \
+            | jq -r '[.manifests[].platform | [.os, .architecture, .variant] | map(select(. != null)) | join("/")] | join(", ")')
+          echo "::warning::Some platform builds failed, so ${TAG} was published with only: ${PLATFORMS}"
 
       - name: 🪪 Attest build provenance
         uses: actions/attest-build-provenance@v4

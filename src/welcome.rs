@@ -4,7 +4,7 @@ use crossterm::{
   event::{self, Event, KeyCode, KeyModifiers},
   terminal::{disable_raw_mode, enable_raw_mode},
 };
-use reqwest::{Client, Error};
+use reqwest::{header::LOCATION, redirect::Policy, Client, Error, StatusCode};
 use std::{
   cmp::Ordering,
   env,
@@ -162,6 +162,26 @@ where
   }
 }
 
+/// Check if AdGuard Home runs in GL.iNet mode, which redirects its web UI to the router's login
+async fn is_glinet_mode(ip: &str, port: &str, protocol: &str) -> bool {
+  let Ok(client) = Client::builder().redirect(Policy::none()).build() else {
+    return false;
+  };
+  let url = format!("{}://{}:{}/", protocol, ip, port);
+  let router_url = format!("http://{}", ip);
+  client
+    .get(&url)
+    .timeout(Duration::from_secs(2))
+    .send()
+    .await
+    .is_ok_and(|res| {
+      res
+        .headers()
+        .get(LOCATION)
+        .is_some_and(|l| l == &router_url)
+    })
+}
+
 /// With the users specified AdGuard details, verify the connection.
 /// Returns `Err` on a failed connection (so the caller can retry); exits on
 /// rejected auth or an unsupported version, which retrying wouldn't fix.
@@ -205,9 +225,13 @@ async fn verify_connection(
       Ok(())
     }
     // Connection failed to authenticate. Print error and exit
-    Ok(_) => print_error(
+    Ok(res) => print_error(
       &format!("Authentication with AdGuard at {}:{} failed", ip, port),
-      "Check the credentials you passed as environmental variables and try again.",
+      if res.status() == StatusCode::UNAUTHORIZED && is_glinet_mode(ip, port, protocol).await {
+        "AdGuard Home is running in GL.iNet mode (--glinet), which doesn't accept a username and password."
+      } else {
+        "Check the credentials you passed as environmental variables and try again."
+      },
       None,
     ),
     // Connection failed to establish - return so the caller can retry
